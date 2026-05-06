@@ -1329,6 +1329,70 @@ func TestOrchestrator_BackoffIssueNotInCache(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
+func TestLabelFilter_SkipsUnlabelledIssues(t *testing.T) {
+	mt := newObservingTracker([]types.Issue{
+		{ID: "ISS-1", Title: "Labelled", State: types.Unclaimed, Labels: []string{"agent-ready"}},
+		{ID: "ISS-2", Title: "No label", State: types.Unclaimed, Labels: []string{}},
+		{ID: "ISS-3", Title: "Wrong label", State: types.Unclaimed, Labels: []string{"human-only"}},
+	})
+	mw := workspace.NewMockManager(t.TempDir())
+	mr := &agent.MockRunner{
+		Events: []types.AgentEvent{{Type: "turn/completed"}},
+		Delay:  10 * time.Millisecond,
+	}
+	workflowCfg := testConfig()
+	workflowCfg.Tracker.Labels = []string{"agent-ready"}
+	orch := NewOrchestrator(mt, mw, mr, &staticConfig{cfg: workflowCfg}, nil)
+	go func() {
+		for range orch.Events() {
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	done := startOrchestrator(ctx, orch)
+
+	require.Eventually(t, func() bool {
+		return mt.ClaimCount("ISS-1") > 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, 0, mt.ClaimCount("ISS-2"), "unlabelled issue must not be dispatched")
+	assert.Equal(t, 0, mt.ClaimCount("ISS-3"), "wrong-labelled issue must not be dispatched")
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+func TestLabelFilter_CaseInsensitive(t *testing.T) {
+	mt := newObservingTracker([]types.Issue{
+		{ID: "ISS-1", Title: "Mixed case", State: types.Unclaimed, Labels: []string{"Agent-Ready"}},
+	})
+	mw := workspace.NewMockManager(t.TempDir())
+	mr := &agent.MockRunner{
+		Events: []types.AgentEvent{{Type: "turn/completed"}},
+		Delay:  10 * time.Millisecond,
+	}
+	workflowCfg := testConfig()
+	workflowCfg.Tracker.Labels = []string{"agent-ready"}
+	orch := NewOrchestrator(mt, mw, mr, &staticConfig{cfg: workflowCfg}, nil)
+	go func() {
+		for range orch.Events() {
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	done := startOrchestrator(ctx, orch)
+
+	require.Eventually(t, func() bool {
+		return mt.ClaimCount("ISS-1") > 0
+	}, 2*time.Second, 10*time.Millisecond)
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
 func TestEventTypeString_Unknown(t *testing.T) {
 	tests := []struct {
 		name string
