@@ -27,17 +27,6 @@ archives:
       - README.md
       - LICENSE
 
-brews:
-  - repository:
-      owner: junhoyeo
-      name: homebrew-contrabass
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: https://github.com/junhoyeo/contrabass
-    description: A project-level orchestrator for AI coding agents
-    license: Apache-2.0
-    install: |
-      bin.install "contrabass"
-
 release:
   header: |
     <div align="center">

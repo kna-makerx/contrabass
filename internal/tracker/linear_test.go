@@ -782,6 +782,86 @@ func TestFetchIssues_MissingDataField(t *testing.T) {
 	assert.Contains(t, err.Error(), "missing or invalid data field")
 }
 
+// --- issueStateFromLinear Tests ---
+
+func TestIssueStateFromLinear_DispatchableStates(t *testing.T) {
+	dispatchable := []string{"Todo", "todo", "TODO", "Backlog", "backlog", "BACKLOG"}
+	for _, name := range dispatchable {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, types.Unclaimed, issueStateFromLinear(name), "expected %q to be Unclaimed", name)
+		})
+	}
+}
+
+func TestIssueStateFromLinear_NonDispatchableStates(t *testing.T) {
+	nonDispatchable := []string{
+		"In Progress", "in progress", "IN PROGRESS",
+		"In Review", "in review",
+		"Done", "done", "DONE",
+		"Cancelled", "Canceled", "cancelled",
+		"", // unknown state: do not dispatch
+	}
+	for _, name := range nonDispatchable {
+		t.Run(name, func(t *testing.T) {
+			assert.NotEqual(t, types.Unclaimed, issueStateFromLinear(name), "expected %q to NOT be Unclaimed", name)
+		})
+	}
+}
+
+func TestFetchIssues_NonDispatchableStatesNotUnclaimed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		respondJSON(w, 200, map[string]interface{}{
+			"data": map[string]interface{}{
+				"issues": map[string]interface{}{
+					"nodes": []interface{}{
+						map[string]interface{}{
+							"id": "issue-inprogress", "state": map[string]interface{}{"name": "In Progress"},
+						},
+						map[string]interface{}{
+							"id": "issue-inreview", "state": map[string]interface{}{"name": "In Review"},
+						},
+						map[string]interface{}{
+							"id": "issue-done", "state": map[string]interface{}{"name": "Done"},
+						},
+						map[string]interface{}{
+							"id": "issue-cancelled", "state": map[string]interface{}{"name": "Cancelled"},
+						},
+						map[string]interface{}{
+							"id": "issue-todo", "state": map[string]interface{}{"name": "Todo"},
+						},
+						map[string]interface{}{
+							"id": "issue-backlog", "state": map[string]interface{}{"name": "Backlog"},
+						},
+					},
+					"pageInfo": map[string]interface{}{"hasNextPage": false},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := testClient(t, server.URL)
+	issues, err := client.FetchIssues(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, issues, 6)
+
+	byID := make(map[string]types.Issue, len(issues))
+	for _, iss := range issues {
+		byID[iss.ID] = iss
+	}
+
+	// Non-dispatchable: must NOT be Unclaimed
+	assert.NotEqual(t, types.Unclaimed, byID["issue-inprogress"].State, "In Progress should not be Unclaimed")
+	assert.NotEqual(t, types.Unclaimed, byID["issue-inreview"].State, "In Review should not be Unclaimed")
+	assert.NotEqual(t, types.Unclaimed, byID["issue-done"].State, "Done should not be Unclaimed")
+	assert.NotEqual(t, types.Unclaimed, byID["issue-cancelled"].State, "Cancelled should not be Unclaimed")
+
+	// Dispatchable: must be Unclaimed
+	assert.Equal(t, types.Unclaimed, byID["issue-todo"].State, "Todo should be Unclaimed")
+	assert.Equal(t, types.Unclaimed, byID["issue-backlog"].State, "Backlog should be Unclaimed")
+}
+
 // --- truncateBody Tests ---
 
 func TestTruncateBody_LongBody(t *testing.T) {
