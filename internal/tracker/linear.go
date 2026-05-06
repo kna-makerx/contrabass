@@ -165,6 +165,25 @@ var defaultStateNames = map[types.IssueState]string{
 	types.Released:    "Done",
 }
 
+// linearDispatchableStates is the set of Linear state names (lowercased) that
+// should be treated as dispatchable (Unclaimed). All other states are considered
+// already in-flight or terminal and will NOT be re-dispatched.
+var linearDispatchableStates = map[string]bool{
+	"backlog": true,
+	"todo":    true,
+}
+
+// issueStateFromLinear maps a Linear workflow state name to the internal IssueState.
+// Only "Backlog" and "Todo" map to Unclaimed (i.e., dispatchable).
+// Every other state (In Progress, In Review, Done, Cancelled, etc.) maps to
+// Running, which prevents the orchestrator from re-dispatching the issue.
+func issueStateFromLinear(linearStateName string) types.IssueState {
+	if linearDispatchableStates[strings.ToLower(linearStateName)] {
+		return types.Unclaimed
+	}
+	return types.Running
+}
+
 // --- Tracker interface methods ---
 
 // FetchIssues retrieves candidate issues from Linear with cursor-based pagination.
@@ -466,7 +485,7 @@ func normalizeIssue(node map[string]interface{}) types.Issue {
 		Identifier:    identifier,
 		Title:         getString(node, "title"),
 		Description:   description,
-		State:         types.Unclaimed, // All fetched issues start as unclaimed
+		State:         issueStateFromLinear(linearState),
 		Priority:      priority,
 		Labels:        extractLabels(node),
 		URL:           getString(node, "url"),
