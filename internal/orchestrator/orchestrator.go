@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -255,6 +256,7 @@ func (o *Orchestrator) dispatchUnclaimedIssues(
 	supervisor *errgroup.Group,
 	runSignals chan<- runSignal,
 ) {
+	allowedLabels := cfg.TrackerLabels()
 	for _, issue := range issues {
 		if issue.State != types.Unclaimed {
 			continue
@@ -265,9 +267,26 @@ func (o *Orchestrator) dispatchUnclaimedIssues(
 		if o.isManagedIssue(issue.ID) {
 			continue
 		}
+		if len(allowedLabels) > 0 && !issueHasAnyLabel(issue, allowedLabels) {
+			continue
+		}
 
 		o.dispatchIssue(ctx, watchCtx, cfg, issue, 1, supervisor, runSignals)
 	}
+}
+
+// issueHasAnyLabel reports whether the issue carries at least one label from the
+// allowlist. Comparison is case-insensitive; Linear labels are already lowercased
+// by the tracker, but other trackers may not normalise them.
+func issueHasAnyLabel(issue types.Issue, allowlist []string) bool {
+	for _, want := range allowlist {
+		for _, have := range issue.Labels {
+			if strings.EqualFold(have, want) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (o *Orchestrator) dispatchIssue(

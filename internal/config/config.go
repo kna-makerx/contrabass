@@ -593,11 +593,19 @@ func (c *WorkflowConfig) GitHubAssignee() string {
 	return c.Tracker.Assignee
 }
 
-func (c *WorkflowConfig) GitHubLabels() []string {
+// TrackerLabels returns the label allowlist configured under tracker.labels.
+// When non-empty, only issues carrying at least one of these labels are dispatched.
+// Applies to all tracker types (Linear, GitHub, local).
+func (c *WorkflowConfig) TrackerLabels() []string {
 	if c == nil || len(c.Tracker.Labels) == 0 {
 		return []string{}
 	}
 	return c.Tracker.Labels
+}
+
+// GitHubLabels is an alias for TrackerLabels kept for compatibility.
+func (c *WorkflowConfig) GitHubLabels() []string {
+	return c.TrackerLabels()
 }
 
 func (c *WorkflowConfig) GitHubEndpoint() string {
